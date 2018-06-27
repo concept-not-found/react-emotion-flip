@@ -55,3 +55,6 @@ The function returns an object with additional data from the source dom element.
 
 ### `extractAdditionalDomFromTarget(element)`
 The function returns an object with additional data from the target dom element. This will be provided as `additionalTargetProperties` in the `keyframes` function. Default to return nothing.
+
+### `unmountAsSource`
+By default this option is `false`. When `false`, the Flip component will use mounted and rendered locations as the source. Enabling `unmountAsSource` will use the location at the time of `componentWillUnmount` as the source as well. Enabling this option will allow an animation start from middle of a running animation. The reason why this option is not enabled by default is because during `componentWillUnmount` the children might have been moved due to other components being unmounted at the same time. This will cause the source location to be incorrect and the animation will start from the wrong place.

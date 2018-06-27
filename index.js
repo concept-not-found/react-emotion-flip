@@ -12,7 +12,11 @@ function translateAndScale (source, target) {
     }
   `
 }
-
+function sameBounds (source, target) {
+  return !['top', 'right', 'bottom', 'left'].find(key => {
+    return source[key] !== target[key]
+  })
+}
 const childByFlip = new WeakMap()
 
 module.exports = ({
@@ -27,22 +31,45 @@ module.exports = ({
   keyframes = translateAndScale,
   playCss = '',
   extractAdditionalDomFromSource = (element) => {},
-  extractAdditionalDomFromTarget = (element) => {}
+  extractAdditionalDomFromTarget = (element) => {},
+  unmountAsSource = false
 } = {}) => {
+  if (typeof duration !== 'number') {
+    throw new Error('duration must be an integer')
+  }
   const Flip = class extends Component {
     constructor (props) {
       super(props)
       this.containerRef = createRef()
+
+      this.saveNextFirst = () => {
+        const child = this.containerRef.current
+        childByFlip.set(Flip, {
+          source: child.getBoundingClientRect(),
+          additionalSourceProperties: extractAdditionalDomFromSource(child)
+        })
+      }
+
+      this.cleanup = () => {}
       this.animate = () => {
+        this.cleanup()
+
+        // FIRST
         const {source, additionalSourceProperties} = childByFlip.get(Flip) || {}
+
+        // LAST
+        const child = this.containerRef.current
+        const target = child.getBoundingClientRect()
+
+        // LAST IS NEXT FIRST
+        this.saveNextFirst()
+
+        // INVERT
         if (!source) {
           return
         }
-        const child = this.containerRef.current
-        const target = child.getBoundingClientRect()
-        if (target.width === 0 || target.height === 0) {
-          // if target is an image, width/height will be zero while loading
-          return setTimeout(this.animate, 100)
+        if (sameBounds(source, target)) {
+          return
         }
         const additionalTargetProperties = extractAdditionalDomFromTarget(child)
         const animation = keyframes(
@@ -51,7 +78,7 @@ module.exports = ({
           additionalSourceProperties,
           additionalTargetProperties
         )
-        child.classList.add(css`
+        const animationClass = css`
           transform-origin: ${transformOrigin};
           animation-duration: ${duration}ms;
           animation-timing-function: ${timingFunction};
@@ -62,7 +89,18 @@ module.exports = ({
           animation-play-state: ${playState};
           animation-name: ${animation};
           ${playCss};
-        `)
+        `
+        // PLAY
+        child.classList.add(animationClass)
+
+        const timeout = setTimeout(() => {
+          this.cleanup()
+        }, duration + 10)
+        this.cleanup = () => {
+          clearTimeout(timeout)
+          child.classList.remove(animationClass)
+          this.cleanup = () => {}
+        }
       }
     }
 
@@ -70,11 +108,18 @@ module.exports = ({
       this.animate()
     }
     componentWillUnmount () {
-      const child = this.containerRef.current
-      childByFlip.set(Flip, {
-        source: child.getBoundingClientRect(),
-        additionalSourceProperties: extractAdditionalDomFromSource(child)
-      })
+      if (!unmountAsSource) {
+        return
+      }
+      this.saveNextFirst()
+    }
+
+    getSnapshotBeforeUpdate () {
+      this.saveNextFirst()
+      return null
+    }
+    componentDidUpdate () {
+      this.animate()
     }
 
     render () {
